@@ -95,6 +95,44 @@ layout: pageBar
 ---
 
 # Introduction to DAna ActsSequencer
+## DAna ActsSequencer Algorithm - ActsSequncerContext Class
+
+Setup algorithm configs and sequence:
+
+```cpp {3-7|8-22|all}
+int ActsSequencerContext::setup(const std::vector<std::string>& arguments) {
+    /*...*/
+    // Setup the detector geometry
+    geometry = ActsExamples::Geometry::build(*variables, detector);
+    trackingGeometry = geometry.first;
+    // Set up the magnetic field
+    magneticField = ActsExamples::Options::readMagneticField(*variables);
+
+    std::string outputTrackParameters;
+    setupSimHitReader();
+    setupDigitization();
+    if (truthSmearedSeeded) {
+        setupParticleReader();
+        setupParticleSelector();
+        setupParticleSmearing();
+        outputTrackParameters = particleSmearingCfg.outputTrackParameters;
+    } else {
+        setupSpacePointMaker();
+        setupSeedingAlgorithm();
+    }
+    setupCKFTrackFinder(outputTrackParameters);
+    setupTracksToTrajectories();
+
+    return EXIT_SUCCESS;
+}
+```
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# Introduction to DAna ActsSequencer
 ## DAna ActsSequencer Algorithm - ActsSequncer Class
 
 Event loop:
@@ -130,43 +168,6 @@ layout: pageBar
 ---
 
 # Introduction to DAna ActsSequencer
-## DAna ActsSequencer Algorithm - ActsSequncer Class
-
-```cpp
-class ActsSequencer : public AnaProcessor {
-/*...*/
-private:
-    std::map<tracking::detector, std::shared_ptr<ActsSequencerContext>> actsContext;
-    // Event Store Write Data Handles
-    std::map<tracking::detector, ActsExamples::WriteDataHandle<ActsExamples::SimHitContainer>* > m_outputSimHits;
-    std::map<tracking::detector, ActsExamples::WriteDataHandle<ActsExamples::SimParticleContainer>* > m_outputSimParticles;
-    // Read Data Handles
-    std::map<tracking::detector, ActsExamples::ReadDataHandle<ActsExamples::TrajectoriesContainer>* > m_outputTrajectories;
-    // Output variables
-    struct TrackParams {/*...*/};
-    struct TrackerParams {
-        int No{0};
-        std::vector<TrackParams> track{};
-        // Flattened parameters
-        /*...*/
-    };
-    TrackerParams tag_trk_vars;
-    TrackerParams rec_trk_vars;
-    std::map<tracking::detector , TrackerParams*> acts_trk_vars{
-        {tracking::detector::tag, &tag_trk_vars},
-        {tracking::detector::rec, &rec_trk_vars}
-    };
-
-}
-
-```
-
----
-hideInToc: true
-layout: pageBar
----
-
-# Introduction to DAna ActsSequencer
 ## Misc items
 
 <br>
@@ -188,7 +189,83 @@ namespace tracking
 layout: pageBar
 ---
 
-# Reconstruction CPU performance
+# Samples and configs
+
+| Type | $m_{A'}$ (MeV) | Event Number |
+| --- | --- | --- |
+| Inclusive | - |  $1\times 10^{5}$ |
+| Signal | 5 | $1\times 10^{5}$ |
+
+Config:
+```python
+ActsSequencer.truth_smeared_seeded = 1  # Use track parameters smeared from truth particles for steering CKF
+
+Tracking.Rec_fit_method = 2  # Specify fitting method: 0, no fine fitting; 1, Kalman fitting; 2, Riemann fitting
+Tracking.Tag_fit_method = 2  # Specify fitting method: 0, no fine fitting; 1, Kalman fitting; 2, Riemann fitting
+Tracking.clean = 0  # Clean mode: no truth information
+Tracking.if_smear = 1  # If smear hits in strip structure
+Tracking.if_strip = 1  # If use strip structures in trackers
+Tracking.skip_hits_geq = 40  # Skip tagging/recoil tracker reconstruction if total hits number >= N in this tracker region (N<=0: infinite)
+Tracking.verbose = 0  # Verbose
+Tracking.con_field = -1.5  # Const magnet field
+Tracking.remove_hit_less_E = 0.02  # [MeV] Remove small energy deposition that should not counted s a hit. Apply on raw hits.
+```
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# Act Config
+
+<div grid="~ cols-2 gap-2">
+
+```cpp
+void ActsSequencerContext::setupParticleSelector() {
+    particleSelectorCfg.inputParticles = particleReaderCfg.outputParticles;
+    particleSelectorCfg.inputMeasurementParticlesMap = digiCfg->outputMeasurementParticlesMap;
+    particleSelectorCfg.outputParticles = "particles_selected";
+    particleSelectorCfg.ptMin = 0._MeV;
+    particleSelectorCfg.nHitsMin = 5;
+    particleSelectorCfg.nHitsMax = 40;
+    particleSelectorCfg.etaMin = -7.0;
+    particleSelectorCfg.etaMax = 7.0;
+    particleSelectorCfg.rhoMin = -10.0 * Acts::UnitConstants::m;
+    particleSelectorCfg.rhoMax = 10.0 * Acts::UnitConstants::m;
+    particleSelectorCfg.zMin = -10.0 * Acts::UnitConstants::m;
+    particleSelectorCfg.zMax = 10.0 * Acts::UnitConstants::m;
+    addAlgorithm(std::make_shared<ActsExamples::TruthSeedSelector>(particleSelectorCfg, logLevel));
+}
+```
+
+```cpp
+void ActsSequencerContext::setupParticleSmearing() {
+    particleSmearingCfg = ActsExamples::Options::readParticleSmearingOptions(*variables);
+    particleSmearingCfg.inputParticles = particleSelectorCfg.outputParticles;
+    particleSmearingCfg.outputTrackParameters = "smearedparameters";
+    particleSmearingCfg.randomNumbers = rnd;
+    // configs
+    particleSmearingCfg.sigmaD0 = 10 * Acts::UnitConstants::um;
+    particleSmearingCfg.sigmaD0PtA = 1 * Acts::UnitConstants::um;
+    particleSmearingCfg.sigmaD0PtB = 1 * Acts::UnitConstants::um;
+    particleSmearingCfg.sigmaZ0 = 10 * Acts::UnitConstants::um;
+    particleSmearingCfg.sigmaZ0PtA = 1 * Acts::UnitConstants::um;
+    particleSmearingCfg.sigmaZ0PtB = 1 * Acts::UnitConstants::um;
+    particleSmearingCfg.sigmaT0 = 0;
+    particleSmearingCfg.sigmaPhi = 0.005 * Acts::UnitConstants::degree;
+    particleSmearingCfg.sigmaTheta = 0.005 * Acts::UnitConstants::degree;
+    particleSmearingCfg.sigmaPRel = 0.02; // relative momentum resolution
+    addAlgorithm(std::make_shared<ActsExamples::ParticleSmearing>(particleSmearingCfg, logLevel));
+}
+```
+
+</div>
+
+---
+layout: pageBar
+---
+
+# Algorithm CPU Performance
 
 <br>
 
