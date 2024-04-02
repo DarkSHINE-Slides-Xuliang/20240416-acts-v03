@@ -99,7 +99,7 @@ layout: pageBar
 
 Setup algorithm configs and sequence:
 
-```cpp {3-7|8-22|all}
+```cpp {1-7|8-22|all}
 int ActsSequencerContext::setup(const std::vector<std::string>& arguments) {
     /*...*/
     // Setup the detector geometry
@@ -196,7 +196,7 @@ layout: pageBar
 | Inclusive | - |  $1\times 10^{5}$ |
 | Signal | 5 | $1\times 10^{5}$ |
 
-Config:
+DAna Config:
 ```python
 ActsSequencer.truth_smeared_seeded = 1  # Use track parameters smeared from truth particles for steering CKF
 
@@ -216,7 +216,9 @@ hideInToc: true
 layout: pageBar
 ---
 
-# Act Config
+# Samples and configs
+
+Acts config:
 
 <div grid="~ cols-2 gap-2">
 
