@@ -4,14 +4,14 @@ layout: cover
 class: text-left
 transition: slide-left
 mdc: true
-backgroud: '/ATLAS/ATLAS-Logo.png'
 authors:  # First author should be the presenter
-  - First Author: ["Institution 1", "Institution 2"]
-  - Second Author: ["Institution 3"]
-  - Third Author: ["Institution 1", "Institution 3"] 
+  - Xuliang Zhu: ["TDLI"]
+  - Yulei Zhang: ["INPAC"]
+  - Yifan Zhu: ["INPAC"] 
+  - Junhua Zhang: ["TDLI"]
 
-meeting: "presentation meeting"
-preTitle: "An Example Title"
+meeting: "Dark SHINE Calorimeter R&D Weekly Meeting"
+preTitle: "DAna ActsSequencer v0.1"
 ---
 
 <br>
@@ -48,115 +48,354 @@ hideInToc: true
 layout: pageBar
 ---
 
-# What is Slidev?
-
-Slidev is a slides maker and presenter designed for developers, consist of the following features
-
-- 📝 **Text-based** - focus on the content with Markdown, and then style them later
-- 🎨 **Themable** - theme can be shared and used with npm packages
-- 🧑‍💻 **Developer Friendly** - code highlighting, live coding with autocompletion
-- 🤹 **Interactive** - embedding Vue components to enhance your expressions
-- 🎥 **Recording** - built-in recording and camera view
-- 📤 **Portable** - export into PDF, PNGs, or even a hostable SPA
-- 🛠 **Hackable** - anything possible on a webpage
+# Introduction to DAna ActsSequencer
 
 <br>
+
+**In order to use Acts in Dark SHINE DAna, these updates are made:**
+
+1. Environment solution: DarkSHINE Docker
+2. A customized version of `Acts` in the Docker
+3. DAna ActsSequencer
+4. Misc items
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# Introduction to DAna ActsSequencer
+## Environment solution: DarkSHINE Docker
+
+[Docker repository](https://hub.docker.com/repository/docker/ykrsama/darkshine-simulation/general) | [Dockerfile](https://gitlab.com/ykrsama/darkshine-docker/-/blob/master/Dockerfile)
+
+[Getting started guide](https://2024-winter-software-tutorial-darkshine-knowledg-6537bc19186da3.gitlab.io/prereqs-mac.html)
+
+## Customized Acts in the Docker (based on Acts v30.2)
+
+Acts prefered python. The old C++ examples are deprecated in Acts. To make use the power of C++, we modified CMakeLists to installed shared library for. This modification is not included in the official Acts, but in our Docker.
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# Introduction to DAna ActsSequencer
+## DAna ActsSequencer Algorithm
+
 <br>
 
-Read more about [Why Slidev?](https://sli.dev/guide/why)
+Default Acts **Event Store Data** management is still take control by Acts itself. And simply use DAna framework to manage the Acts **Algoritm Sequence**. There are 2 Class added to the DAna framework: `ActsSequencer` and `ActsSequencerContext`.
+
+Access of Event Store Data are done by calling the WriteDataHandle and ReadDataHandle. The data are stored in the `ActsExamples::AlgorithmContext` class.
 
 ---
+hideInToc: true
 layout: pageBar
 ---
 
-# Navigation
+# Introduction to DAna ActsSequencer
+## DAna ActsSequencer Algorithm - ActsSequncer Class
 
-Hover on the bottom-left corner to see the navigation's controls panel
+Event loop:
 
-## Keyboard Shortcuts
-
-|     |     |
-| --- | --- |
-| <kbd>space</kbd> / <kbd>tab</kbd> / <kbd>right</kbd> | next animation or slide |
-| <kbd>left</kbd>  / <kbd>shift</kbd><kbd>space</kbd> | previous animation or slide |
-| <kbd>up</kbd> | previous slide |
-| <kbd>down</kbd> | next slide |
+```cpp {3-9|10-14|14-18|all}
+void ActsSequencer::ProcessEvt(AnaEvent *evt) {
+    InitEvt();
+    for (auto detector : detectors) {
+        // Event Store. store arbitary data with ownership transfer
+        ActsExamples::WhiteBoard eventStore(Acts::getDefaultLogger("EventStore#" + std::to_string(evt->getEventId()),
+                                                                   actsContext.at(detector)->logLevel),
+                                            actsContext.at(detector)->whiteboardObjectAliases);
+        // Aggregated information to run one algorithm over one event
+        ActsExamples::AlgorithmContext context(0, evt->getEventId(), eventStore);
+        // Transfer data from DEvent to Acts Event Store
+        SimHitsReader(evt, ++context, detector);
+        if (actsContext.at(detector)->truthSmearedSeeded) {
+            ParticleReader(evt, ++context, detector);
+        }
+        // Execute Acts algorithm sequence
+        for (const auto& alg : actsContext.at(detector)->sequenceElements) {
+            alg->internalExecute(++context);
+        }
+    }
+    // Read output values from context
+    /*...*/
+}
+```
 
 ---
+hideInToc: true
 layout: pageBar
 ---
 
-# The Lagrangian
+# Introduction to DAna ActsSequencer
+## DAna ActsSequencer Algorithm - ActsSequncer Class
 
-The mathematical formulation of the Standard Model of particle physics
+```cpp
+class ActsSequencer : public AnaProcessor {
+/*...*/
+private:
+    std::map<tracking::detector, std::shared_ptr<ActsSequencerContext>> actsContext;
+    // Event Store Write Data Handles
+    std::map<tracking::detector, ActsExamples::WriteDataHandle<ActsExamples::SimHitContainer>* > m_outputSimHits;
+    std::map<tracking::detector, ActsExamples::WriteDataHandle<ActsExamples::SimParticleContainer>* > m_outputSimParticles;
+    // Read Data Handles
+    std::map<tracking::detector, ActsExamples::ReadDataHandle<ActsExamples::TrajectoriesContainer>* > m_outputTrajectories;
+    // Output variables
+    struct TrackParams {/*...*/};
+    struct TrackerParams {
+        int No{0};
+        std::vector<TrackParams> track{};
+        // Flattened parameters
+        /*...*/
+    };
+    TrackerParams tag_trk_vars;
+    TrackerParams rec_trk_vars;
+    std::map<tracking::detector , TrackerParams*> acts_trk_vars{
+        {tracking::detector::tag, &tag_trk_vars},
+        {tracking::detector::rec, &rec_trk_vars}
+    };
 
-
-The Standard Model of particle physics is a **quantum field theory**. 
-Therefore, its <span style="color:#ac1944;">fundamental elements are quantum fields</span> and the excitations of these fields are *identified* as **particles**.
-All information is encoded in a compact description—the so-called ‘Lagrangian’ ( $\mathcal{L}$ ), which is an extremely compact notation.
-
-In the physics classroom, however, it is very difficult to achieve a deep-level understanding because the required mathematics skills go far beyond high-school level. Hence, we will only treat the ultra-short Lagrangian as below:
-$$
-\mathcal{L} = \color{#9d6fa5}{ -\frac{1}{4} F_{\mu\nu} F^{\mu\nu} } 
-              + \color{#c90024}{ i\bar{\psi} {\mathcal{D}}\!\!\!\!/ \psi }
-              + \mathrm{h.c.} 
-              + \color{#296b4c}{ \psi_i y_{ij} \psi_j \phi }
-              + \mathrm{h.c.} 
-              + \color{#4d45cc}{ |\mathcal{D}_{\mu} \phi |{ }^2 }
-              - \color{#fe7b26}{ V(\phi) }
-$$
-
-<div class="grid grid-cols-3 gap-5 items-center justify-center">
-
-<div class="col-span-2">
-
-> - <span style="color: #9d6fa5"> $F_{\mu\nu} F^{\mu\nu}$: This term is the scalar product of the field strength tensor $F_{\mu\nu}$ containing the mathematical encoding of all interaction particles except the Higgs boson. It contains the necessary formulation for these particles to even exist, and describes how they interact with each other. </span>
-> - <span style="color: #c90024"> $i\bar{\psi} {\mathcal{D}}\!\!\!\!/ \psi$: This term describes how interaction particles interact with matter particles. The fields $\psi$ and $\bar{\psi}$ describe (anti)quarks and (anti)leptons. </span>
-> - <span style="color: #296b4c"> $\psi_i y_{ij} \psi_j \phi$: This term describes how matter particles couple to the Brout–Englert–Higgs field $\psi$ and thereby obtain mass. </span>
-> - <span style="color: #4d45cc"> $|\mathcal{D}_{\mu} \phi |{ }^2$: This term describes how the interaction particles couple to the BEH field. This applies only to the interaction particles of the weak interaction ($W^{\pm}, Z$), which thereby obtain their mass. </span>
-> - <span style="color: #fe7b26"> $V(\phi)$: This term describes the potential of the BEH field.  </span>
-
-</div>
-<div class="col-span-1">
-
-<Transform :scale="1.0">
-<img src="https://www.quantumdiaries.org/wp-content/uploads/2011/06/cernmug.jpg"/>
-</Transform>
-
-</div>
-
-</div>
-
-<style scoped>
-.slidev-layout blockquote {
-  font-size: 1rem;
 }
 
-li {
-  margin-top: 0.25rem;
-  margin-bottom: 0.25rem;
+```
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# Introduction to DAna ActsSequencer
+## Misc items
+
+<br>
+
+- For **DSimu** simulation, turned on **Saving MCParticle contribution** on tracker / calorimeter hit (Need to re-run the DSimu).
+    - It's usefull to save the MCParticle contribution of hit is useful for the ActsSequencer, and even studies of ECAL / HCAL.
+
+- Rename macro object `DEBUG` to `DSIMU_DEBUG` in all scope, including DSimu, DAna, DDis.
+
+- Moved this enum from `Digitization.h` to `AnaData.h`, in order to use it in ActsSequencer.
+```cpp
+namespace tracking
+{
+    enum detector {tag = 1, rec = 2};
 }
-
-</style>
+```
 
 ---
 layout: pageBar
 ---
 
-# 2-D Plotly Examples
+# Reconstruction CPU performance
 
-Two 2D plots for display
+<br>
 
-Try to interact with the graphs 🥰
+```
+======================================================================
+---------------------------> Run Summary <----------------------------
+     Processor Name                     Execution Time / Event [sec]
+     Digitizer                               0.00014907
+     MCTruthAnalysis                         0.00001287
+     Tracking                                0.00086278
+     ActsSequencer                           0.00198477
+     RecECAL                                 0.00245720
+     RecHCAL                                 0.00000270
+     CutFlowAnalysis                         0.00000068
+----------------------------------------------------------------------
+     Total Processed Event(s): 100000
+     Total Processing Time:    742.86003200 [sec]
+======================================================================
+```
 
-<div grid="~ cols-2 gap-20">
+No longer need to set cuts i.e. `Tracking.skip_hits_geq = 40` or `Tracking.remove_hit_less_E = 0.02` that looses tracking efficiency.
 
-<Transform :scale="0.75">
-<PlotlyGraph filePath="Graph/plotly1.json" tickFontSize="18" graphWidth="800"/>
+---
+layout: pageBar
+---
+
+# P<sub>Track</sub> Reconstruction Performance
+
+## Tagging Tracker at Truth P = 8±0.5 GeV
+
+<div grid="~ cols-2 gap-2">
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dTagTrk2_pp_8_cut2.json"/>
 </Transform>
 
-<Transform :scale="0.75">
-<PlotlyGraph filePath="Graph/plotly1.json" tickFontSize="18" graphWidth="800"/>
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dActs_TagTrk_P_8_cut2.json"/>
+</Transform>
+
+</div>
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# P<sub>Track</sub> Reconstruction Performance
+
+## Recoil Tracker at Truth P = 1±0.5 GeV
+
+<div grid="~ cols-2 gap-2">
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dRecTrk2_pp_1_cut2.json"/>
+</Transform>
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dActs_RecTrk_P_1_cut2.json"/>
+</Transform>
+
+</div>
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# P<sub>Track</sub> Reconstruction Performance
+
+## Recoil Tracker at Truth P = 2±0.5 GeV
+
+<div grid="~ cols-2 gap-2">
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dRecTrk2_pp_2_cut2.json"/>
+</Transform>
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dActs_RecTrk_P_2_cut2.json"/>
+</Transform>
+
+</div>
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# P<sub>Track</sub> Reconstruction Performance
+
+## Recoil Tracker at Truth P = 3±0.5 GeV
+
+<div grid="~ cols-2 gap-2">
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dRecTrk2_pp_3_cut2.json"/>
+</Transform>
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dActs_RecTrk_P_3_cut2.json"/>
+</Transform>
+
+</div>
+
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# P<sub>Track</sub> Reconstruction Performance
+
+## Recoil Tracker at Truth P = 4±0.5 GeV
+
+<div grid="~ cols-2 gap-2">
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dRecTrk2_pp_4_cut2.json"/>
+</Transform>
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dActs_RecTrk_P_4_cut2.json"/>
+</Transform>
+
+</div>
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# P<sub>Track</sub> Reconstruction Performance
+
+## Recoil Tracker at Truth P = 5±0.5 GeV
+
+<div grid="~ cols-2 gap-2">
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dRecTrk2_pp_5_cut2.json"/>
+</Transform>
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dActs_RecTrk_P_5_cut2.json"/>
+</Transform>
+
+</div>
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# P<sub>Track</sub> Reconstruction Performance
+
+## Recoil Tracker at Truth P = 6±0.5 GeV
+
+<div grid="~ cols-2 gap-2">
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dRecTrk2_pp_6_cut2.json"/>
+</Transform>
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dActs_RecTrk_P_6_cut2.json"/>
+</Transform>
+
+</div>
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# P<sub>Track</sub> Reconstruction Performance
+
+## Recoil Tracker at Truth P = 7±0.5 GeV
+
+<div grid="~ cols-2 gap-2">
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dRecTrk2_pp_7_cut2.json"/>
+</Transform>
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dActs_RecTrk_P_7_cut2.json"/>
+</Transform>
+
+</div>
+
+---
+hideInToc: true
+layout: pageBar
+---
+
+# P<sub>Track</sub> Reconstruction Performance
+
+## Recoil Tracker at Truth P = 8±0.5 GeV
+
+<div grid="~ cols-2 gap-2">
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dRecTrk2_pp_8_cut2.json"/>
+</Transform>
+
+<Transform :scale="0.7">
+<PlotlyGraph filePath="plots/json/dActs_RecTrk_P_8_cut2.json"/>
 </Transform>
 
 </div>
@@ -166,35 +405,80 @@ Try to interact with the graphs 🥰
 layout: pageBar
 ---
 
-# 3-D Plotly Examples
+# N<sub>Track</sub> Reconstruction Performance
 
-Two 3D plots for display
+## Tagging Track Number
 
-Try to interact with the graphs 🥰
+<div grid="~ cols-3 gap-2">
 
-<div grid="~ cols-2 gap-20">
-
-<Transform :scale="0.65">
-<PlotlyGraph filePath="Graph/plotly2.json" graphWidth="900"/>
+<Transform :scale="0.5">
+<PlotlyGraph filePath="plots/json/TagTrk2_track_No_truth_precut.json"/>
 </Transform>
 
-<Transform :scale="0.65">
-<PlotlyGraph filePath="Graph/plotly3.json" graphWidth="900"/>
+<Transform :scale="0.5">
+<PlotlyGraph filePath="plots/json/TagTrk2_track_No__precut.json"/>
+</Transform>
+
+<Transform :scale="0.5">
+<PlotlyGraph filePath="plots/json/Acts_TagTrk_No_precut.json"/>
 </Transform>
 
 </div>
 
+---
+hideInToc: true
+layout: pageBar
+---
+
+# N<sub>Track</sub> Reconstruction Performance
+
+## Tagging Track Number
+
+<div grid="~ cols-3 gap-2">
+
+<Transform :scale="0.5">
+<PlotlyGraph filePath="plots/json/RecTrk2_track_No_truth_precut.json"/>
+</Transform>
+
+<Transform :scale="0.5">
+<PlotlyGraph filePath="plots/json/RecTrk2_track_No__precut.json"/>
+</Transform>
+
+<Transform :scale="0.5">
+<PlotlyGraph filePath="plots/json/Acts_RecTrk_No_precut.json"/>
+</Transform>
+
+</div>
 
 ---
+layout: pageBar
+---
+
+# ActsSequencer Development Plan
+
+<br>
+
+```mermaid
+%%{init: { 'theme': 'dark' } }%%
+timeline
+    section Apr. 1 - Apr. 7
+        v0.1 ✅ : Baseline track reconstruction
+        v0.2 : Fix hard-coded parts
+        v0.3 : Add vertexing
+    section Apr. 8 - Apr. 14
+        v0.4 : Replace the ECAL seed by the Acts track
+        v0.5 : Add non-constant magnetic field
+    section Apr. 15 - Apr. 21
+        v1.0 : Add default seeding algorithm (with help from Junhua and Prof. Xiaocong)
+```
+
+---
+hideInToc: true
 layout: center
 class: "text-center"
 ---
 
-# Learn More
+# Thanks
 
-[Documentations](https://sli.dev) / [GitHub Repo](https://github.com/slidevjs/slidev)
+[Git Repo](https://code.ihep.ac.cn/darkshine/darkshine-simulation/-/tree/acts-xuliang)
 
-
----
-layout: pageBar
----
