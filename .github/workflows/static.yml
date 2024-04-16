@@ -33,7 +33,7 @@ jobs:
         run:  npm add -g @slidev/cli
 
       - name: Build
-        run: npm run build -- --base /20240401-acts-constant-B/
+        run: npm run build -- --base /20240416-acts-v03/
 
       - uses: actions/configure-pages@v4
 
